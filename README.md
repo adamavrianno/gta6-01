@@ -1,85 +1,89 @@
-# Solmarina — Streets of Gold
+[![Make GTA 6](https://make.fun/badge/gta6-01.svg)](https://make.fun/c/gta6-01)
+[![Rank](https://make.fun/badge/gta6-01/adamavrianno/gta6-01/rank.svg)](https://make.fun/c/gta6-01)
+[![Reward](https://make.fun/badge/gta6-01/adamavrianno/gta6-01/reward.svg)](https://make.fun/c/gta6-01)
 
-[![make.fun](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01)
-[![rank](https://make.fun/badge/gta6-01/adamavrianno/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01)
-[![reward](https://make.fun/badge/gta6-01/adamavrianno/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01)
+# Porto Verde: Neon Tide
 
-An open-world crime game that runs in desktop Chrome from static files — no
-network, no build step. Serve `game/` with any static server and open
-`index.html`.
+A 3D open-world crime game for the [Make GTA 6 bounty](https://make.fun/c/gta6-01) on make.fun.
+Dante Cole, a former courier, is pulled back into Porto Verde's underworld — a sun-soaked
+coastal city with six districts to explore on foot and by car.
 
-## The game
+## The city
 
-Maya Reyes came back to **Solmarina** — a sun-soaked fictional coastal city
-of pastel towers, palm avenues, a beach, a pier and a ferris wheel — with
-nothing but a borrowed jacket and a debt to collect. Explore the city on foot
-or behind the wheel, steal cars, outrun the Solmarina Police Department, and
-run jobs for the Marbella crew to take the city back, one street at a time.
+- **Old Harbor** — docks, cranes and warehouses on the western waterfront
+- **Neon Strip** — the bright nightlife avenue at the city's heart
+- **Hillside Villas** — winding roads and big houses on the north-east rise
+- **Industrial Docks** — container stacks and trucks in the north-west
+- **University Quarter** — campus, plaza and clock tower
+- **Beachfront** — promenade, pier and the Casino Verde on the southern sand
 
-- **Open world**: a 9×9 avenue grid with ~120 buildings, a park, a plaza, a
-  beach and a pier, all built from geometry and procedural canvas textures.
-- **On foot and by car**: walk, sprint and jump; steal any of six fictional
-  cars (Marlin Sedan, Comet GT, Palma Cruiser, Tortuga Van, Vela Roadster,
-  Sol Pickup) and drive with arcade handling, handbrake slides and damage.
-- **Traffic and pedestrians**: 16 AI cars cruise the avenues and turn at
-  intersections; 34 pedestrians stroll the sidewalks and scatter when shots
-  are fired.
-- **Wanted level and police**: stealing, shooting and hitting pedestrians
-  raise a 0–5 star wanted level. SPPD interceptors with flashing light bars
-  chase and ram you; officers try to bust you on foot. Break line of sight
-  and stay quiet to cool the heat off.
-- **Missions and story**: six jobs with beacons, timers and paydays — steal a
-  car for the pier, a timed three-drop courier run, a shakedown against the
-  Red Vipers, a getaway, a crate setup and a final yacht job. Cash and respect
-  reward play; 20 sun coins and health packs are scattered around the city.
-- **Combat**: pistol with tracers and hit sparks, rival crew shooters who
-  fight back, busted / wasted endings with fees and respawn.
-- **HUD and menus**: wanted stars, cash, health, a live circular minimap
-  (roads, traffic, police, enemies, mission beacon), speedometer, mission
-  banners and toasts, a start screen, pause, and localStorage saving
-  (H to save, Continue on the menu).
+## What you can do
+
+- **Explore on foot and by car** — walk, run and jump in third person; steal five
+  vehicle types (compact, sedan, sports, van, truck), each with its own handling.
+  Traffic cars and pedestrians fill the streets.
+- **Wanted system (0–5 stars)** — stealing cars, hitting pedestrians and shooting
+  raise the heat. Police cars and officers respond with escalating numbers and
+  aggression; break line of sight to cool down. Get busted or wasted and you retry.
+- **Six story missions** — a timed courier pickup, stealing a sports car off the
+  Neon Strip, escaping a police dragnet, protecting a witness, gathering heist gear,
+  and the final Casino Verde heist with a four-star getaway. Missions pay out and
+  unlock the next one.
+- **Side work** — taxi fares (press T while driving) and a stunt jump on the
+  beachfront avenue.
+- **Combat** — pistol with aim, ammo and reload, melee up close, mission gunmen,
+  and a health system.
+- **HUD** — live circular minimap (player, mission marker, police, traffic),
+  wanted stars, money, mission objective, health bar and speedometer.
+- **Menus & saving** — start screen with controls, pause menu, and automatic
+  localStorage saves (money, mission progress, best stats) with a Continue option.
 
 ## Controls
 
 | Key | Action |
 | --- | --- |
-| WASD / arrows | Walk / drive |
-| Mouse drag | Look / orbit camera |
-| Shift | Sprint |
-| Space | Jump / handbrake |
-| E | Steal / enter / exit a car |
-| Click | Shoot (on foot) |
+| W A S D | Move / drive |
+| Mouse | Look (click to lock the pointer) |
+| E | Enter / exit car |
+| Space | Jump on foot · handbrake in a car |
+| Shift | Run |
+| F | Fire pistol / melee up close |
+| V | Melee |
+| R | Reload |
 | M | Start next mission |
+| T | Take a taxi fare (while driving) |
 | P / Esc | Pause |
-| H | Save game |
-| C | Camera distance |
-
-## Structure
-
-The game's own source lives in `game/src/`, one job per file:
-
-- `main.js` — bootstrap, input, third-person camera, frame loop, screenshots
-- `city.js` — Solmarina itself: roads, buildings, park, plaza, beach, pier
-- `player.js` — the on-foot character, entering/exiting cars, health
-- `vehicles.js` — car models, spawning, arcade driving physics
-- `traffic.js` — AI traffic cars and pedestrians
-- `police.js` — wanted level, SPPD interceptors and officers
-- `missions.js` — the six-job story, beacons, timers, paydays
-- `combat.js` — shooting, tracers, rival crew, hit feedback
-- `hud.js` — HUD, minimap, banners, menus, pause, busted/wasted
-- `audio.js` — procedural WebAudio sound (engine, sirens, shots, pickups)
-- `save.js` — localStorage save / load
-- `state.js` — the shared game state every system reads and writes
-
-Three.js is vendored as `game/vendor/three.module.min.js`. Everything else is
-original: the city, characters, story, vehicle names and art are invented for
-this game — nothing from any commercial game.
 
 ## Play it
 
+No build step — just static files under `game/` (three.js r160 is vendored at
+`game/vendor/three.module.min.js`, and every sound is synthesised live with the
+Web Audio API, so the game makes zero network requests).
+
 ```sh
-node serve.ts        # serves game/ at http://localhost:8080
+node serve.ts
+# open http://localhost:8080 in desktop Chrome
 ```
 
-Screenshot staging modes (used to take the four screenshots in
-`screenshots/`): `?shot=chase`, `?shot=foot`, `?shot=drive`, `?shot=mission`.
+## Layout
+
+- `game/index.html` — page shell, import map, HUD and menus
+- `game/src/main.js` — bootstrap, game loop, camera, entering cars, fail states
+- `game/src/city.js` — districts, road grid, buildings, landmarks, collision
+- `game/src/player.js` — on-foot movement
+- `game/src/vehicles.js` — vehicle types, spawning, driving physics
+- `game/src/traffic.js` — traffic cars and pedestrians
+- `game/src/police.js` — wanted level, pursuit cars, officers, bust
+- `game/src/missions.js` — six story missions, taxi fares, stunt jumps
+- `game/src/combat.js` — pistol, melee, enemies, health
+- `game/src/hud.js` — HUD, minimap, toasts
+- `game/src/audio.js` — synthesised engine, sirens, gunfire and music loops
+- `game/src/save.js` — localStorage save / load
+- `game/src/state.js` — shared state, districts, vehicle specs
+- `game/src/shots.js` — screenshot staging (`?shot=chase|street|drive|mission`)
+- `main.ts` — the entry program: copies `game/` and `screenshots/` to the output
+  directory and writes `dossier.json`
+
+## License
+
+MIT — see `LICENSE`.

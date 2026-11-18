@@ -1,120 +1,94 @@
-// Combat: the player's pistol, rival crew shooters, hit sparks and tracers.
-// Firing in public is a crime — the city hears it.
+// Combat: pistol fire, melee, mission gunmen, health and hit feedback.
 import * as THREE from 'three';
-import { G, rand, pick } from './state.js';
-import { makePersonMesh, damagePlayer } from './player.js';
-import { addWanted } from './police.js';
-import { scarePeds } from './traffic.js';
-import { sfx } from './audio.js';
+import { clamp } from './state.js';
 
-let tracer = null, tracerLife = 0;
-const ray = new THREE.Raycaster();
-
-export function initCombat() {
-  tracer = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
-    new THREE.LineBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0 }));
-  tracer.frustumCulled = false; G.scene.add(tracer);
+export function createCombat(scene) {
+  return { scene, enemies: [] };
 }
 
-export function playerShoot() {
-  const p = G.player; if (!p || p.shootCd > 0 || G.mode !== 'play') return;
-  if (p.inCar) return; // no drive-by in this build: get out to fight
-  p.shootCd = 0.28; G.stats.shots++;
-  sfx.shoot(); addWanted(1, 'shots fired');
-  scarePeds(p.pos.x, p.pos.z, 30);
-  const dir = new THREE.Vector3(); G.camera.getWorldDirection(dir);
-  const origin = G.camera.position.clone();
-  ray.set(origin, dir); ray.far = 90;
-  // Targets: enemies, pedestrians, traffic cars.
-  const targets = [];
-  for (const e of G.enemies) if (!e.dead) targets.push({ obj: e.group, kind: 'enemy', ref: e });
-  for (const ped of G.peds) if (!ped.dead) targets.push({ obj: ped.group, kind: 'ped', ref: ped });
-  for (const c of G.cars) targets.push({ obj: c.group, kind: 'car', ref: c });
-  const hits = ray.intersectObjects(targets.map(t => t.obj), true);
-  let end = origin.clone().add(dir.clone().multiplyScalar(80));
-  if (hits.length) {
-    const h = hits[0]; end = h.point.clone();
-    let o = h.object; while (o && !o.userData.__hit) o = o.parent;
-    const t = targets.find(t => t.obj === h.object || isDescendant(t.obj, h.object));
-    if (t) {
-      G.stats.hits++;
-      if (t.kind === 'enemy') damageEnemy(t.ref, 34);
-      else if (t.kind === 'ped') { killPed(t.ref); addWanted(1, 'pedestrian down'); }
-      else if (t.kind === 'car') {
-        t.ref.hp -= 12; if (t.ref.police) addWanted(1, 'shooting at police');
-        if (t.ref.hp <= 0 && !t.ref.dead) { t.ref.dead = true; }
-      }
-      spawnSparks(end);
-    }
-  }
-  tracer.geometry.setFromPoints([origin.clone().add(dir.clone().multiplyScalar(1.2)), end]);
-  tracer.material.opacity = 0.9; tracerLife = 0.06;
-  G.hud && G.hud.kickCrosshair();
-}
-function isDescendant(root, obj) { let o = obj; while (o) { if (o === root) return true; o = o.parent; } return false; }
-
-function spawnSparks(pos) {
-  const s = new THREE.Mesh(new THREE.SphereGeometry(0.22, 6, 5),
-    new THREE.MeshBasicMaterial({ color: 0xffdd55 }));
-  s.position.copy(pos); G.scene.add(s);
-  setTimeout(() => G.scene.remove(s), 120);
-  sfx.hit();
+export function spawnEnemy(combat, x, z, hp = 50) {
+  const g = new THREE.Group();
+  const red = new THREE.MeshLambertMaterial({ color: 0x8c2f39 });
+  const skin = new THREE.MeshLambertMaterial({ color: 0xc98d64 });
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.75, 0.32), red); torso.position.y = 1.1; g.add(torso);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.38), skin); head.position.y = 1.68; g.add(head);
+  const gun = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.4), new THREE.MeshLambertMaterial({ color: 0x111111 }));
+  gun.position.set(0.3, 1.1, 0.2); g.add(gun);
+  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.7, 0.24), new THREE.MeshLambertMaterial({ color: 0x222831 }));
+  legL.position.set(-0.15, 0.35, 0); g.add(legL);
+  const legR = legL.clone(); legR.position.x = 0.15; g.add(legR);
+  g.position.set(x, 0, z);
+  combat.scene.add(g);
+  const e = { group: g, legL, legR, x, z, hp, heading: 0, shootCd: 1.2, phase: 0, dead: false };
+  combat.enemies.push(e);
+  return e;
 }
 
-export function spawnEnemies(n, x, z, gang) {
-  const list = [];
-  for (let i = 0; i < n; i++) {
-    const g = makePersonMesh(gang === 'red' ? 0xc0392b : 0x7b2d8b, pick([0xf1c27d, 0xc68642]), 1.02);
-    const ex = x + rand(-8, 8), ez = z + rand(-8, 8);
-    g.position.set(ex, 0, ez); G.scene.add(g);
-    const e = { group: g, pos: g.position, hp: 100, dead: false, shootCd: rand(0.5, 2), gang };
-    G.enemies.push(e); list.push(e);
-  }
-  return list;
+export function clearEnemies(combat) {
+  for (const e of combat.enemies) combat.scene.remove(e.group);
+  combat.enemies.length = 0;
 }
-export function damageEnemy(e, dmg) {
-  e.hp -= dmg;
-  if (e.hp <= 0 && !e.dead) {
-    e.dead = true; G.kills++;
-    e.group.rotation.x = -Math.PI / 2; e.group.position.y = 0.4;
-    G.money += 60; G.respect += 5;
-    G.hud && G.hud.toast('Rival down — +$60, +5 respect.');
-    setTimeout(() => { G.scene.remove(e.group); const i = G.enemies.indexOf(e); if (i >= 0) G.enemies.splice(i, 1); }, 4000);
-  }
-}
-function killPed(ped) {
-  ped.dead = true; ped.group.rotation.x = -Math.PI / 2; ped.group.position.y = 0.4;
-  setTimeout(() => { G.scene.remove(ped.group); const i = G.peds.indexOf(ped); if (i >= 0) G.peds.splice(i, 1); }, 5000);
-}
-export function updateEnemies(dt) {
-  const p = G.player; if (!p) return;
-  for (const e of G.enemies) {
+
+// Enemies advance and shoot at the player. hooks: {damagePlayer(n), spawnBurst(x,y,z,color,n)}
+export function updateEnemies(combat, player, dt, hooks) {
+  for (const e of combat.enemies) {
     if (e.dead) continue;
-    const dx = p.pos.x - e.pos.x, dz = p.pos.z - e.pos.z;
-    const dist = Math.hypot(dx, dz);
-    e.shootCd -= dt;
-    if (dist < 42 && e.shootCd <= 0) {
-      e.shootCd = rand(1.1, 2.2);
-      e.group.rotation.y = Math.atan2(dx, dz);
-      // Wild shots: hit chance falls with distance.
-      if (Math.random() < Math.max(0.12, 0.5 - dist * 0.008)) {
-        damagePlayer(7, 'enemy');
-        spawnSparks(new THREE.Vector3(p.pos.x, 1.2, p.pos.z));
-      } else {
-        spawnSparks(new THREE.Vector3(p.pos.x + rand(-2, 2), 0.2, p.pos.z + rand(-2, 2)));
+    const dx = player.x - e.x, dz = player.z - e.z;
+    const d = Math.hypot(dx, dz) || 1;
+    e.heading = Math.atan2(dx, dz);
+    if (d > 14) {
+      e.x += Math.sin(e.heading) * 4.6 * dt;
+      e.z += Math.cos(e.heading) * 4.6 * dt;
+      e.phase += dt * 10;
+      const sw = Math.sin(e.phase) * 0.55;
+      e.legL.rotation.x = sw; e.legR.rotation.x = -sw;
+    } else {
+      e.shootCd -= dt;
+      if (e.shootCd <= 0) {
+        e.shootCd = 1.6 + Math.random();
+        hooks.spawnBurst(e.x + Math.sin(e.heading) * 0.6, 1.3, e.z + Math.cos(e.heading) * 0.6, 0xffcc33, 3);
+        if (Math.random() < 0.55) hooks.damagePlayer(6 + Math.random() * 6);
       }
-      sfx.shoot();
-    } else if (dist > 8) {
-      e.pos.x += dx / dist * 3.2 * dt; e.pos.z += dz / dist * 3.2 * dt;
-      e.group.rotation.y = Math.atan2(dx / dist, dz / dist);
-      const sw = Math.sin(G.time * 10) * 0.5;
-      e.group.userData.legL.rotation.x = sw; e.group.userData.legR.rotation.x = -sw;
     }
+    e.group.position.set(e.x, 0, e.z);
+    e.group.rotation.y = e.heading;
   }
-  if (tracerLife > 0) { tracerLife -= dt; if (tracerLife <= 0) tracer.material.opacity = 0; }
 }
-export function clearEnemies() {
-  for (const e of [...G.enemies]) { G.scene.remove(e.group); }
-  G.enemies.length = 0;
+
+// Fire the pistol from the camera direction. Returns what was hit.
+export function firePistol(combat, origin, dir, targets, hooks) {
+  // targets: [{x,z,y?,radius,hp,dead,onHit,onKill,kind}]
+  let best = null, bestT = 120;
+  for (const t of targets) {
+    if (t.dead) continue;
+    const dx = t.x - origin.x, dz = t.z - origin.z;
+    const along = dx * dir.x + dz * dir.z;
+    if (along < 0 || along > bestT) continue;
+    const perp = Math.abs(dx * dir.z - dz * dir.x);
+    if (perp < (t.radius || 1.2)) { best = t; bestT = along; }
+  }
+  const end = { x: origin.x + dir.x * (best ? bestT : 60), y: 1.35, z: origin.z + dir.z * (best ? bestT : 60) };
+  hooks.spawnBurst(origin.x + dir.x * 1.2, 1.35, origin.z + dir.z * 1.2, 0xffcc33, 3);
+  if (best) {
+    best.hp -= 34;
+    hooks.spawnBurst(best.x, 1.2, best.z, 0xff4444, 6);
+    if (best.hp <= 0) {
+      best.dead = true;
+      if (best.group) best.group.visible = false;
+      hooks.spawnBurst(best.x, 1.0, best.z, 0xff2222, 14);
+      if (best.onKill) best.onKill(best);
+    } else if (best.onHit) best.onHit(best);
+    return { hit: best, end };
+  }
+  hooks.spawnBurst(end.x, end.y, end.z, 0xcccccc, 2);
+  return { hit: null, end };
+}
+
+export function damagePlayer(state, n, hooks) {
+  state.health = clamp(state.health - n, 0, state.maxHealth);
+  if (hooks && hooks.onDamage) hooks.onDamage(n);
+  if (state.health <= 0 && !state.wasted) {
+    state.wasted = true;
+    if (hooks && hooks.onWasted) hooks.onWasted();
+  }
 }

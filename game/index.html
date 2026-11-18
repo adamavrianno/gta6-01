@@ -1,74 +1,89 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Solmarina — Streets of Gold</title>
+<title>Porto Verde: Neon Tide — Open-World Crime</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="./style.css">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.min.js" } }
 </script>
 </head>
 <body>
-<div id="app">
-  <canvas id="game"></canvas>
-  <div id="hud" class="hidden">
-    <div id="objective"><span id="obj-title">SOLMARINA</span><span id="obj-text">Explore the city</span></div>
-    <div id="stats">
-      <div id="stars" title="Wanted level"></div>
-      <div id="money">$0</div>
-      <div id="respect">RESPECT 0</div>
-    </div>
-    <div id="healthbar"><div id="healthfill"></div><span id="healthtext">100</span></div>
-    <div id="minimap-wrap"><canvas id="minimap" width="200" height="200"></canvas><div id="minimap-label">SOLMARINA</div></div>
-    <div id="speedo" class="hidden"><span id="speed">0</span><small>mph</small><div id="carname">—</div></div>
-    <div id="crosshair" class="hidden">+</div>
-    <div id="banner" class="hidden"></div>
-    <div id="toast"></div>
-    <div id="hint">WASD move &nbsp;·&nbsp; E enter car &nbsp;·&nbsp; Click shoot &nbsp;·&nbsp; M mission &nbsp;·&nbsp; P pause</div>
-    <div id="mission-timer" class="hidden"></div>
+<div id="app"></div>
+<div id="hud" class="hidden">
+  <div id="hud-top-left">
+    <div id="money">$<span id="money-val">250</span></div>
+    <div id="objective"><span id="objective-title">Free Roam</span><span id="objective-text">Explore Porto Verde. Press M for the next mission.</span></div>
+    <div id="mission-toast"></div>
   </div>
-  <div id="menu">
-    <div class="menu-inner">
-      <div class="kicker">AN OPEN-WORLD CRIME STORY</div>
-      <h1>SOLMARINA</h1>
-      <div class="subtitle">STREETS OF GOLD</div>
-      <p class="tagline">Maya Reyes came back to Solmarina with nothing but a borrowed
-      jacket and a debt to collect. Steal cars, outrun the Solmarina Police
-      Department, run jobs for the crew — and take the city back, one street at a time.</p>
-      <div class="menu-buttons">
-        <button id="btn-new">NEW GAME</button>
-        <button id="btn-continue">CONTINUE</button>
-        <button id="btn-how">HOW TO PLAY</button>
-      </div>
-      <div id="howto" class="hidden">
-        <b>WASD</b> walk / drive &nbsp; <b>Mouse drag</b> look &nbsp; <b>Shift</b> sprint<br>
-        <b>E</b> steal / enter / exit a car &nbsp; <b>Click</b> shoot &nbsp; <b>Space</b> jump / handbrake<br>
-        <b>M</b> start next mission &nbsp; <b>P</b> pause &nbsp; <b>H</b> save game &nbsp; <b>C</b> camera<br>
-        Stealing, shooting and hitting pedestrians raise your wanted level.
-        Lose the police to cool down. Finish missions to earn cash and respect.
-      </div>
-      <div id="save-line"></div>
-      <div class="foot">A fictional city. No real places, people or brands. Best in desktop Chrome.</div>
-    </div>
+  <div id="hud-top-right">
+    <div id="stars" aria-label="wanted level"></div>
+    <div id="wanted-label">WANTED</div>
   </div>
-  <div id="pause" class="hidden overlay">
-    <div class="panel"><h2>PAUSED</h2>
-      <p>Solmarina waits for no one — except now.</p>
+  <div id="hud-bottom-left">
+    <div id="health-wrap"><div id="health-bar"></div><span id="health-num">100</span></div>
+    <div id="ammo">PISTOL&nbsp;&nbsp;<span id="ammo-val">12 / 48</span></div>
+    <div id="hint">E enter car &nbsp;·&nbsp; F fire &nbsp;·&nbsp; V melee &nbsp;·&nbsp; R reload</div>
+  </div>
+  <div id="speedo" class="hidden"><span id="speed-val">0</span><span id="speed-unit">km/h</span><div id="car-name">SEDAN</div></div>
+  <canvas id="minimap" width="220" height="220"></canvas>
+  <div id="crosshair" class="hidden">+</div>
+  <div id="center-msg"></div>
+  <div id="damage-flash"></div>
+</div>
+<div id="menu" class="screen">
+  <div class="menu-card">
+    <div class="kicker">PORTO VERDE</div>
+    <h1>NEON TIDE</h1>
+    <p class="tagline">A sun-soaked coastal city. One courier. Six jobs. No way out but through.</p>
+    <p class="story">Dante Cole came back to Porto Verde to disappear. The city had other plans.
+    Steal cars, outrun the law, and pull the crew back together — one mission at a time.</p>
+    <div class="menu-buttons">
+      <button id="btn-start">START GAME</button>
+      <button id="btn-continue" class="hidden">CONTINUE — <span id="continue-info"></span></button>
+      <button id="btn-how">HOW TO PLAY</button>
+    </div>
+    <div id="howto" class="hidden">
+      <table>
+        <tr><td>W A S D</td><td>Move / drive</td></tr>
+        <tr><td>Mouse</td><td>Look around (click to lock)</td></tr>
+        <tr><td>E</td><td>Enter / exit car (stealing raises wanted)</td></tr>
+        <tr><td>Space</td><td>Jump on foot · Handbrake in a car</td></tr>
+        <tr><td>Shift</td><td>Run</td></tr>
+        <tr><td>F</td><td>Fire pistol / melee up close</td></tr>
+        <tr><td>R</td><td>Reload</td></tr>
+        <tr><td>M</td><td>Start next mission</td></tr>
+        <tr><td>P / Esc</td><td>Pause</td></tr>
+      </table>
+      <p>Crimes raise your wanted level (1–5 stars). Break line of sight to cool down.
+      Taxi fares and stunt jumps pay extra. Your progress saves automatically.</p>
+    </div>
+    <div class="menu-foot">Keyboard + mouse · Best in desktop Chrome · Sound on for the full ride</div>
+  </div>
+</div>
+<div id="pause" class="screen hidden">
+  <div class="menu-card">
+    <h2>PAUSED</h2>
+    <p class="tagline">Porto Verde waits for no one. Except now.</p>
+    <div class="menu-buttons">
       <button id="btn-resume">RESUME</button>
-      <button id="btn-save">SAVE GAME</button>
-      <button id="btn-quit">QUIT TO MENU</button>
-      <div id="pause-save-line"></div>
+      <button id="btn-restart">RESTART MISSION</button>
+      <button id="btn-quit">SAVE &amp; QUIT TO MENU</button>
+    </div>
+    <div id="pause-stats"></div>
+  </div>
+</div>
+<div id="fail" class="screen hidden">
+  <div class="menu-card">
+    <h2 id="fail-title">WASTED</h2>
+    <p class="tagline" id="fail-sub">The tide took you under.</p>
+    <div class="menu-buttons">
+      <button id="btn-retry">RETRY</button>
+      <button id="btn-fail-menu">MAIN MENU</button>
     </div>
   </div>
-  <div id="endcard" class="hidden overlay">
-    <div class="panel"><h2 id="end-title">BUSTED</h2>
-      <p id="end-text"></p>
-      <button id="btn-respawn">BACK ON THE STREETS</button>
-    </div>
-  </div>
-  <div id="vignette"></div>
 </div>
 <script type="module" src="./src/main.js"></script>
 </body>

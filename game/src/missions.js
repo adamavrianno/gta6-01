@@ -1,162 +1,233 @@
-// Missions and story: Maya Reyes returns to Solmarina owing money to the
-// Marbella crew. Six jobs, each with steps, a beacon in the world, a timer
-// where the job is timed, and cash + respect on completion.
-import * as THREE from 'three';
-import { G, fmtMoney } from './state.js';
-import { spawnEnemies, clearEnemies } from './combat.js';
-import { addWanted, clearPolice } from './police.js';
-import { sfx } from './audio.js';
-import { saveGame } from './save.js';
+// Story missions, taxi fares and stunt jumps for Porto Verde: Neon Tide.
+// Six missions, each with stages, a marker, a timer where it matters, and a payout.
+import { MISSION_REWARDS, clamp } from './state.js';
+import { spawnEnemy, clearEnemies } from './combat.js';
+import { playChime, playSting } from './audio.js';
 
-export const MISSIONS = [
-  {
-    name: '1 — FIRST WHEELS', giver: 'Lena, your fixer',
-    brief: 'Lena needs wheels. Steal any car and bring it to the Sunset Pier.',
-    steps: [
-      { type: 'steal', text: 'Steal a car (walk up to one, press E)' },
-      { type: 'goto', x: -104, z: 285, r: 12, text: 'Drive the stolen car to the Sunset Pier', needCar: true },
-    ], pay: 400,
-  },
-  {
-    name: '2 — COURIER RUN', giver: 'Lena',
-    brief: 'Three drops across Solmarina, 150 seconds. The Marbella crew pays for speed.',
-    steps: [
-      { type: 'goto', x: 182, z: -182, r: 10, text: 'Drop 1/3 — North-East towers', timer: 150 },
-      { type: 'goto', x: -182, z: 130, r: 10, text: 'Drop 2/3 — West market' },
-      { type: 'goto', x: 26, z: -182, r: 10, text: 'Drop 3/3 — North plaza' },
-    ], pay: 700,
-  },
-  {
-    name: '3 — SHAKEDOWN', giver: 'Boss Marbella',
-    brief: 'The Red Vipers are taxing our streets. Clear their corner at the park and send a message.',
-    steps: [
-      { type: 'goto', x: -130, z: -26, r: 14, text: 'Reach the park corner' },
-      { type: 'kill', count: 4, x: -130, z: -26, text: 'Take down the Red Vipers (0/4)' },
-    ], pay: 900,
-  },
-  {
-    name: '4 — GETAWAY', giver: 'Lena',
-    brief: 'The SPPD raided the stash house. You are wanted — lose them and reach the hideout.',
-    steps: [
-      { type: 'escape', text: 'Lose the police, then reach the hideout', x: -182, z: -182, r: 12 },
-    ], pay: 1000,
-  },
-  {
-    name: '5 — THE SETUP', giver: 'Boss Marbella',
-    brief: 'The big job needs gear. Collect three crates stashed around the city.',
-    steps: [
-      { type: 'collect', x: 182, z: 78, r: 8, text: 'Crate 1/3 — East docks' },
-      { type: 'collect', x: -78, z: -182, r: 8, text: 'Crate 2/3 — North garages' },
-      { type: 'collect', x: 78, z: 182, r: 8, text: 'Crate 3/3 — South market' },
-    ], pay: 1200,
-  },
-  {
-    name: '6 — SOLMARINA NIGHTS', giver: 'Boss Marbella',
-    brief: 'The final job: hit the Viper yacht at the pier, take their ledger, and vanish.',
-    steps: [
-      { type: 'goto', x: -104, z: 270, r: 14, text: 'Reach the yacht at the pier' },
-      { type: 'kill', count: 5, x: -104, z: 285, text: 'Take down the yacht guards (0/5)' },
-      { type: 'collect', x: -104, z: 300, r: 8, text: 'Grab the ledger from the yacht' },
-      { type: 'goto', x: -182, z: -182, r: 12, text: 'Escape to the hideout — the city is yours' },
-    ], pay: 2500,
-  },
+export const MISSION_INTROS = [
+  'Mara needs a package moved. Pick it up at the Old Harbor — then drive it across town before the clock runs out.',
+  'A chrome-red sports car is parked on the Neon Strip. Take it. Deliver it to the garage on 5th — no scratches, no cops.',
+  'The dragnet is closing on the Industrial Docks. Get in, get seen, and get out the far gate alive.',
+  'A witness is hiding at the University Quarter. Drive her to the safe flat — her old crew will try to stop you.',
+  'The heist needs gear. Three stashes, three corners of the city. Collect them all.',
+  'Tonight: the Casino Verde vault. Grab the take, then lose a four-star chase all the way to the safehouse.',
 ];
 
-let beacon = null, beaconLight = null, killTarget = 0, killStart = 0;
+export const MISSION_TITLES = [
+  '1 — First Run', '2 — Neon Repossession', '3 — Dragnet', '4 — Witness Run', '5 — Gear Up', '6 — Neon Tide Heist',
+];
 
-export function currentMission() { return MISSIONS[G.missionIndex] || null; }
-export function missionActive() { return !!G.mission; }
+export function createMissions() {
+  return { index: 0, active: false, stage: 0, timer: 0, data: {}, taxi: null, jumpCd: 0 };
+}
 
-export function startMission(i) {
-  const m = MISSIONS[i];
-  if (!m) { G.hud && G.hud.toast('All missions complete — Solmarina is yours. Free roam!'); return false; }
-  clearEnemies();
-  G.mission = m; G.missionStep = 0; G.missionTimer = 0;
-  G.hud && G.hud.showBanner(m.name, m.brief);
-  sfx.mission();
-  enterStep();
+export function startMission(G, index) {
+  const s = G.state;
+  if (index > 5) return false;
+  s.missionIndex = index;
+  s.missionActive = true;
+  s.missionId = index;
+  s.missionTitle = MISSION_TITLES[index];
+  s.missionText = MISSION_INTROS[index];
+  G.missions.active = true;
+  G.missions.index = index;
+  G.missions.stage = 0;
+  G.missions.timer = 0;
+  G.missions.data = {};
+  clearEnemies(G.combat);
+  const sp = G.city.spots;
+  if (index === 0) { G.setMarker(sp.harborPickup.x, sp.harborPickup.z); G.toast('Mission 1 — First Run: reach the Old Harbor pickup.'); }
+  if (index === 1) {
+    const sc = G.cars.find((c) => Math.hypot(c.x - sp.sportsCar.x, c.z - sp.sportsCar.z) < 12);
+    if (sc) sc.missionCar = true; // the target car, even if already stolen
+    G.setMarker(sp.sportsCar.x, sp.sportsCar.z); G.toast('Mission 2 — Neon Repossession: steal the red sports car.');
+  }
+  if (index === 2) { G.setMarker(sp.docksStart.x, sp.docksStart.z); G.toast('Mission 3 — Dragnet: get to the Industrial Docks.'); }
+  if (index === 3) { G.setMarker(sp.uniWitness.x, sp.uniWitness.z); G.toast('Mission 4 — Witness Run: pick up the witness at the University.'); }
+  if (index === 4) { G.setMarker(sp.gearSpots[0].x, sp.gearSpots[0].z); G.toast('Mission 5 — Gear Up: collect stash 1 of 3.'); }
+  if (index === 5) { G.setMarker(sp.casino.x, sp.casino.z); G.toast('Mission 6 — Neon Tide Heist: get to Casino Verde.'); }
+  playSting(G.audio);
   return true;
 }
 
-function enterStep() {
-  const m = G.mission; if (!m) return;
-  const s = m.steps[G.missionStep];
-  if (!s) { completeMission(); return; }
-  killTarget = 0; killStart = G.kills;
-  if (s.timer) G.missionTimer = s.timer;
-  if (s.type === 'kill') spawnEnemies(s.count, s.x, s.z, 'red');
-  if (s.type === 'escape') { addWanted(3, 'the raid — run!'); }
-  if (s.x !== undefined) setMarker(s.x, s.z);
-  else clearMarker();
-  G.hud && G.hud.setObjective(s.text);
+export function completeMission(G) {
+  const s = G.state;
+  const reward = MISSION_REWARDS[G.missions.index];
+  s.money += reward;
+  s.stats.earned += reward;
+  s.stats.missionsDone += 1;
+  s.missionActive = false;
+  s.missionIndex = Math.min(6, G.missions.index + 1);
+  G.missions.active = false;
+  G.clearMarker();
+  clearEnemies(G.combat);
+  for (const c of G.cars) c.missionCar = false;
+  s.wanted = 0; s.wantedHeat = 0;
+  if (s.missionIndex >= 6) {
+    s.missionTitle = 'Story Complete';
+    s.missionText = 'The Neon Tide heist is done. Porto Verde is yours — free roam, taxi fares and jumps still pay.';
+    G.centerMsg('STORY COMPLETE — $' + reward + ' BANKED', 4);
+  } else {
+    s.missionTitle = 'Mission Complete';
+    s.missionText = 'Paid $' + reward + '. Press M for the next job.';
+    G.centerMsg('MISSION COMPLETE — +$' + reward, 3.5);
+  }
+  playChime(G.audio);
+  G.save();
 }
 
-export function updateMissions(dt) {
-  const m = G.mission; if (!m) return;
-  const s = m.steps[G.missionStep]; if (!s) return;
-  const p = G.player; if (!p) return;
-  if (s.timer) {
-    G.missionTimer -= dt;
-    G.hud && G.hud.setTimer(Math.max(0, Math.ceil(G.missionTimer)));
-    if (G.missionTimer <= 0) { failMission('Out of time — the drop window closed.'); return; }
-  }
-  const d = s.x !== undefined ? Math.hypot(p.pos.x - s.x, p.pos.z - s.z) : 9999;
-  if (s.type === 'steal') { if (p.inCar) advanceStep(); }
-  else if (s.type === 'goto' || s.type === 'collect') {
-    if (d < s.r) {
-      if (s.type === 'collect') { sfx.cash(); G.money += 150; G.hud && G.hud.toast('Crate secured — +$150.'); }
-      if (s.needCar && !p.inCar) { G.hud && G.hud.toast('Bring a car to the pier!'); return; }
-      advanceStep();
+export function failMission(G, reason) {
+  const s = G.state;
+  s.missionActive = false;
+  G.missions.active = false;
+  G.clearMarker();
+  clearEnemies(G.combat);
+  s.missionTitle = 'Mission Failed';
+  s.missionText = reason + ' Press M to retry the job.';
+  G.centerMsg('MISSION FAILED', 3);
+  G.save();
+}
+
+function near(G, x, z, r) {
+  const p = G.playerPos();
+  return Math.hypot(p.x - x, p.z - z) < r;
+}
+
+export function updateMissions(G, dt) {
+  const m = G.missions;
+  const s = G.state;
+  const sp = G.city.spots;
+  if (m.jumpCd > 0) m.jumpCd -= dt;
+  // Stunt jump: fast over the beachfront ramp.
+  const car = s.inCar;
+  if (car && m.jumpCd <= 0) {
+    const d = Math.hypot(car.x - sp.stuntRamp.x, car.z - sp.stuntRamp.z);
+    if (d < 7 && Math.abs(car.speed) > 17) {
+      m.jumpCd = 6;
+      const dist = Math.round(Math.abs(car.speed) * 1.6);
+      const pay = 40 + dist;
+      s.money += pay; s.stats.jumpsDone += 1; s.stats.bestJump = Math.max(s.stats.bestJump, dist);
+      G.toast('STUNT JUMP! ' + dist + 'm — +$' + pay);
+      playChime(G.audio);
+      G.save();
     }
-  } else if (s.type === 'kill') {
-    const done = G.kills - killStart;
-    G.hud && G.hud.setObjective(`Take down the Red Vipers (${Math.min(done, s.count)}/${s.count})`);
-    if (done >= s.count) advanceStep();
-  } else if (s.type === 'escape') {
-    if (G.wanted === 0 && d < s.r) advanceStep();
-    else if (G.wanted === 0) G.hud && G.hud.setObjective('Heat is off — now reach the hideout');
-    else G.hud && G.hud.setObjective('Lose the police first, then reach the hideout');
   }
-  if (beacon) { beacon.rotation.y += dt * 1.5; beacon.position.y = 1 + Math.sin(G.time * 2) * 0.3; }
+  // Taxi fare in progress.
+  if (m.taxi) {
+    const t = m.taxi;
+    if (near(G, t.dest.x, t.dest.z, 7)) {
+      s.money += t.pay; s.stats.faresDone += 1; s.stats.earned += t.pay;
+      G.toast('Fare complete — +$' + t.pay);
+      playChime(G.audio);
+      m.taxi = null; G.clearMarker();
+      G.save();
+    } else if (!s.inCar) {
+      G.toast('Fare cancelled — you left the car.');
+      m.taxi = null; G.clearMarker();
+    }
+  }
+  if (!m.active) return;
+  const i = m.index;
+  if (i === 0) {
+    if (m.stage === 0) {
+      if (near(G, sp.harborPickup.x, sp.harborPickup.z, 6)) {
+        m.stage = 1; m.timer = 90;
+        G.setMarker(sp.harborDrop.x, sp.harborDrop.z);
+        s.missionText = 'Package secured. Drive to the drop on 5th — 90 seconds!';
+        G.toast('Package secured — drive!');
+      }
+    } else {
+      m.timer -= dt;
+      s.missionText = 'Drive to the drop — ' + Math.ceil(m.timer) + 's left!';
+      if (near(G, sp.harborDrop.x, sp.harborDrop.z, 7)) completeMission(G);
+      else if (m.timer <= 0) failMission(G, 'The package went cold — the buyer walked.');
+    }
+  }
+  if (i === 1) {
+    if (m.stage === 0) {
+      if (s.inCar && s.inCar.missionCar) {
+        m.stage = 1;
+        G.setMarker(sp.garage.x, sp.garage.z);
+        s.missionText = 'You have the car. Deliver it to the garage — stay clean.';
+        G.toast('Car stolen — deliver it to the garage!');
+      }
+    } else if (near(G, sp.garage.x, sp.garage.z, 7) && s.inCar && s.inCar.missionCar) {
+      completeMission(G);
+    }
+  }
+  if (i === 2) {
+    if (m.stage === 0) {
+      if (near(G, sp.docksStart.x, sp.docksStart.z, 8)) {
+        m.stage = 1; m.timer = 60;
+        if (s.wanted < 3) { s.wanted = 3; s.wantedHeat = 1; }
+        G.setMarker(sp.docksExit.x, sp.docksExit.z);
+        s.missionText = 'Dragnet active! Survive 60s, then slip out the far gate.';
+        G.toast('3 stars! Survive the dragnet!');
+      }
+    } else {
+      m.timer -= dt;
+      s.missionText = 'Dragnet: ' + Math.ceil(m.timer) + 's — then reach the far gate.';
+      if (m.timer <= 0) { m.stage = 2; s.missionText = 'Gate is open — get out of the docks!'; }
+      if (m.stage === 2 && near(G, sp.docksExit.x, sp.docksExit.z, 8)) completeMission(G);
+    }
+  }
+  if (i === 3) {
+    if (m.stage === 0) {
+      if (near(G, sp.uniWitness.x, sp.uniWitness.z, 6)) {
+        m.stage = 1;
+        spawnEnemy(G.combat, sp.uniWitness.x + 18, sp.uniWitness.z - 10);
+        spawnEnemy(G.combat, sp.uniWitness.x - 14, sp.uniWitness.z + 16);
+        spawnEnemy(G.combat, sp.uniWitness.x + 8, sp.uniWitness.z + 22);
+        G.setMarker(sp.uniDrop.x, sp.uniDrop.z);
+        s.missionText = 'Witness aboard! Drive to the safe flat — her crew is coming.';
+        G.toast('Witness aboard — drive!');
+      }
+    } else if (near(G, sp.uniDrop.x, sp.uniDrop.z, 7)) completeMission(G);
+  }
+  if (i === 4) {
+    const spot = sp.gearSpots[m.stage];
+    if (spot && near(G, spot.x, spot.z, 6)) {
+      m.stage += 1;
+      playChime(G.audio);
+      if (m.stage >= 3) completeMission(G);
+      else {
+        G.setMarker(sp.gearSpots[m.stage].x, sp.gearSpots[m.stage].z);
+        s.missionText = 'Gear collected ' + m.stage + ' of 3. Next stash marked.';
+        G.toast('Stash ' + m.stage + ' of 3 collected.');
+      }
+    }
+  }
+  if (i === 5) {
+    if (m.stage === 0) {
+      if (near(G, sp.casino.x, sp.casino.z, 8)) {
+        m.stage = 1; m.timer = 8;
+        s.missionText = 'Inside the vault — hold position, grab the take!';
+        G.toast('Grabbing the take — hold on!');
+      }
+    } else if (m.stage === 1) {
+      m.timer -= dt;
+      s.missionText = 'Vault: ' + Math.ceil(m.timer) + 's — keep your head down!';
+      if (m.timer <= 0) {
+        m.stage = 2;
+        s.wanted = 4; s.wantedHeat = 1;
+        G.setMarker(sp.safehouse.x, sp.safehouse.z);
+        s.missionText = 'Take secured! 4 stars — lose the chase and reach the safehouse.';
+        G.toast('4 stars! Getaway to the safehouse!');
+      }
+    } else if (near(G, sp.safehouse.x, sp.safehouse.z, 8)) completeMission(G);
+  }
 }
 
-function advanceStep() {
-  G.missionStep++;
-  sfx.pickup();
-  enterStep();
+// Offer a taxi fare: called when the player presses T while driving with no mission.
+export function startTaxiFare(G) {
+  const s = G.state;
+  if (G.missions.taxi || G.missions.active) return;
+  const rngSpots = [
+    { x: -200, z: 120 }, { x: 205, z: 130 }, { x: 120, z: 210 }, { x: -160, z: -96 }, { x: 224, z: -192 },
+  ];
+  const dest = rngSpots[Math.floor(Math.random() * rngSpots.length)];
+  const pay = 80 + Math.floor(Math.random() * 70);
+  G.missions.taxi = { dest, pay };
+  G.setMarker(dest.x, dest.z);
+  G.toast('Taxi fare: take the passenger to the marker — $' + pay);
 }
-function completeMission() {
-  const m = G.mission;
-  G.money += m.pay; G.respect += 20; G.missionsDone++;
-  G.hud && G.hud.showBanner('JOB DONE', `${m.name} — paid ${fmtMoney(m.pay)}. Respect +20.`);
-  G.hud && G.hud.setObjective('Press M for the next job, or free-roam Solmarina.');
-  sfx.cash(); clearMarker(); clearEnemies();
-  G.mission = null; G.missionIndex++;
-  G.missionTimer = 0; G.hud && G.hud.setTimer(0);
-  saveGame(true);
-}
-function failMission(why) {
-  G.hud && G.hud.showBanner('JOB FAILED', why);
-  sfx.fail(); clearMarker(); clearEnemies();
-  G.mission = null; G.missionTimer = 0; G.hud && G.hud.setTimer(0);
-  G.hud && G.hud.setObjective('Press M to retry the job.');
-}
-
-export function setMarker(x, z) {
-  clearMarker();
-  G.markerPos = { x, z };
-  beacon = new THREE.Group();
-  const cyl = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 0.4, 20),
-    new THREE.MeshBasicMaterial({ color: 0xffb300 }));
-  cyl.position.y = 0.4; beacon.add(cyl);
-  const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.6, 60, 12, 1, true),
-    new THREE.MeshBasicMaterial({ color: 0xffb300, transparent: true, opacity: 0.28, side: THREE.DoubleSide }));
-  beam.position.y = 30; beacon.add(beam);
-  beacon.position.set(x, 1, z);
-  G.scene.add(beacon);
-}
-export function clearMarker() {
-  if (beacon) { G.scene.remove(beacon); beacon = null; }
-  G.markerPos = null;
-}
-export function abortMission() { if (G.mission) { clearMarker(); clearEnemies(); G.mission = null; G.hud && G.hud.setObjective('Free roam — press M for the next job.'); } }

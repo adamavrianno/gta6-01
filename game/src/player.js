@@ -1,117 +1,80 @@
-// On-foot player: a low-poly Solmarina local built from boxes, with
-// walk / sprint / jump, enter-car, punch and shoot.
+// Dante Cole on foot: third-person walking, running, jumping.
 import * as THREE from 'three';
-import { G, clamp, rand, pick } from './state.js';
-import { collideCircle, clampToCity } from './city.js';
-import { nearestCar } from './vehicles.js';
-import { addWanted } from './police.js';
-import { sfx } from './audio.js';
+import { clamp, angleLerp } from './state.js';
+import { collideCircle } from './city.js';
 
-const SHIRTS = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf39c12, 0x9b59b6, 0x1abc9c, 0xecf0f1, 0x34495e];
-const SKINS = [0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac];
+export function createPlayer(scene) {
+  const group = new THREE.Group();
+  const skin = new THREE.MeshLambertMaterial({ color: 0xc98d64 });
+  const jacket = new THREE.MeshLambertMaterial({ color: 0x2e86ab });
+  const pants = new THREE.MeshLambertMaterial({ color: 0x222831 });
+  const hair = new THREE.MeshLambertMaterial({ color: 0x1a1210 });
 
-export function makePersonMesh(shirt, skin, scale) {
-  const g = new THREE.Group();
-  const s = scale || 1;
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.55 * s, 0.75 * s, 0.32 * s),
-    new THREE.MeshLambertMaterial({ color: shirt }));
-  body.position.y = 1.05 * s; body.castShadow = true; g.add(body);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.42 * s, 0.42 * s, 0.42 * s),
-    new THREE.MeshLambertMaterial({ color: skin }));
-  head.position.y = 1.65 * s; head.castShadow = true; g.add(head);
-  const hair = new THREE.Mesh(new THREE.BoxGeometry(0.44 * s, 0.14 * s, 0.44 * s),
-    new THREE.MeshLambertMaterial({ color: pick([0x1a1a1a, 0x4a2c0a, 0x777777, 0x2c1a0a]) }));
-  hair.position.y = 1.88 * s; g.add(hair);
-  const legMat = new THREE.MeshLambertMaterial({ color: pick([0x2c3e50, 0x5d6d7e, 0x7b241c, 0x1a5276]) });
-  const lL = new THREE.Mesh(new THREE.BoxGeometry(0.2 * s, 0.65 * s, 0.2 * s), legMat);
-  lL.position.set(-0.14 * s, 0.33 * s, 0); g.add(lL);
-  const lR = lL.clone(); lR.position.x = 0.14 * s; g.add(lR);
-  const aL = new THREE.Mesh(new THREE.BoxGeometry(0.14 * s, 0.6 * s, 0.14 * s),
-    new THREE.MeshLambertMaterial({ color: skin }));
-  aL.position.set(-0.36 * s, 1.05 * s, 0); g.add(aL);
-  const aR = aL.clone(); aR.position.x = 0.36 * s; g.add(aR);
-  g.userData = { legL: lL, legR: lR, armL: aL, armR: aR };
-  return g;
-}
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.78, 0.34), jacket);
+  torso.position.y = 1.12; group.add(torso);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.4), skin);
+  head.position.y = 1.72; group.add(head);
+  const hairM = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.16, 0.44), hair);
+  hairM.position.y = 1.94; group.add(hairM);
+  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.72, 0.26), pants);
+  legL.position.set(-0.16, 0.36, 0); group.add(legL);
+  const legR = legL.clone(); legR.position.x = 0.16; group.add(legR);
+  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.66, 0.22), jacket);
+  armL.position.set(-0.42, 1.14, 0); group.add(armL);
+  const armR = armL.clone(); armR.position.x = 0.42; group.add(armR);
+  // Pistol in the right hand.
+  const gun = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.34), new THREE.MeshLambertMaterial({ color: 0x111111 }));
+  gun.position.set(0.42, 0.82, 0.16); group.add(gun);
 
-export function createPlayer() {
-  const group = makePersonMesh(0xffc93c, 0xe0ac69, 1.02);
-  G.scene.add(group);
-  G.player = {
-    group, pos: new THREE.Vector3(G.spawnPoint.x, 0, G.spawnPoint.z),
-    vel: new THREE.Vector3(), yaw: Math.PI, health: 100, inCar: false, car: null,
-    speed: 0, vy: 0, grounded: true, walkPhase: 0, shootCd: 0, punchCd: 0,
+  scene.add(group);
+  const p = {
+    group, legL, legR, armL, armR, gun,
+    x: 20, z: 40, y: 0, vy: 0, heading: 0, onGround: true,
+    walkSpeed: 4.2, runSpeed: 8.2, radius: 0.55,
+    moving: false, running: false, walkPhase: 0,
   };
-  group.position.copy(G.player.pos);
-  return G.player;
+  group.position.set(p.x, 0, p.z);
+  return p;
 }
 
-export function updatePlayer(dt) {
-  const p = G.player; if (!p) return;
-  p.shootCd -= dt; p.punchCd -= dt;
-  if (p.inCar && p.car) { // riding: hide the pedestrian mesh inside the car
-    p.pos.copy(p.car.pos); // keep logic (missions, police, pickups) on the car
-    p.group.position.copy(p.car.pos); p.group.visible = false;
-    if (p.car.dead) exitCar(true);
-    return;
-  }
-  p.group.visible = true;
-  const k = G.keys;
-  const sprint = k['ShiftLeft'] || k['ShiftRight'];
-  const speed = sprint ? 9.5 : 5.2;
-  // Movement is relative to the camera yaw.
+// input: {f,b,l,r,run,jump}, camYaw: camera orbit angle, dt seconds.
+export function updatePlayer(p, input, camYaw, dt, colliders) {
+  const speed = input.run ? p.runSpeed : p.walkSpeed;
   let mx = 0, mz = 0;
-  if (k['KeyW'] || k['ArrowUp']) mz += 1;
-  if (k['KeyS'] || k['ArrowDown']) mz -= 1;
-  if (k['KeyA'] || k['ArrowLeft']) mx -= 1;
-  if (k['KeyD'] || k['ArrowRight']) mx += 1;
-  const len = Math.hypot(mx, mz) || 1;
-  const cy = G.camYaw;
-  const wx = (-Math.sin(cy) * mz + Math.cos(cy) * mx) / len * (mx || mz ? 1 : 0);
-  const wz = (-Math.cos(cy) * mz - Math.sin(cy) * mx) / len * (mx || mz ? 1 : 0);
-  p.pos.x += wx * speed * dt; p.pos.z += wz * speed * dt;
-  p.speed = (mx || mz) ? speed : 0;
-  if (mx || mz) p.yaw = Math.atan2(wx, wz);
-  collideCircle(p.pos, 0.6);
-  clampToCity(p.pos);
-  // Jump
-  if ((k['Space']) && p.grounded) { p.vy = 7.5; p.grounded = false; }
-  p.vy -= 22 * dt; p.pos.y += p.vy * dt;
-  if (p.pos.y <= 0) { p.pos.y = 0; p.vy = 0; p.grounded = true; }
-  p.group.position.copy(p.pos);
-  p.group.rotation.y = p.yaw;
-  // Walk swing
-  p.walkPhase += dt * (p.speed ? 11 : 0);
-  const sw = p.speed ? Math.sin(p.walkPhase) * 0.55 : 0;
-  p.group.userData.legL.rotation.x = sw; p.group.userData.legR.rotation.x = -sw;
-  p.group.userData.armL.rotation.x = -sw * 0.7; p.group.userData.armR.rotation.x = sw * 0.7;
-  // Regenerate a little health when calm.
-  if (G.wanted === 0 && p.health < 100) p.health = Math.min(100, p.health + 2 * dt);
+  if (input.f) mz -= 1;
+  if (input.b) mz += 1;
+  if (input.l) mx -= 1;
+  if (input.r) mx += 1;
+  p.moving = mx !== 0 || mz !== 0;
+  p.running = p.moving && input.run;
+  if (p.moving) {
+    const len = Math.hypot(mx, mz); mx /= len; mz /= len;
+    const sin = Math.sin(camYaw), cos = Math.cos(camYaw);
+    const wx = mx * cos - mz * sin;
+    const wz = mx * sin + mz * cos;
+    p.x += wx * speed * dt;
+    p.z += wz * speed * dt;
+    const target = Math.atan2(wx, wz);
+    p.heading = angleLerp(p.heading, target, Math.min(1, dt * 12));
+    p.walkPhase += dt * (p.running ? 13 : 8);
+    const swing = Math.sin(p.walkPhase) * (p.running ? 0.75 : 0.5);
+    p.legL.rotation.x = swing; p.legR.rotation.x = -swing;
+    p.armL.rotation.x = -swing * 0.8; p.armR.rotation.x = swing * 0.8;
+  } else {
+    p.legL.rotation.x *= 0.8; p.legR.rotation.x *= 0.8;
+    p.armL.rotation.x *= 0.8; p.armR.rotation.x *= 0.8;
+  }
+  // Jump + gravity.
+  if (input.jump && p.onGround) { p.vy = 7.5; p.onGround = false; }
+  if (!p.onGround) {
+    p.vy -= 22 * dt;
+    p.y += p.vy * dt;
+    if (p.y <= 0) { p.y = 0; p.vy = 0; p.onGround = true; }
+  }
+  // Building collision + city bounds.
+  const res = collideCircle(colliders, p.x, p.z, p.radius);
+  if (res.hit) { p.x += res.px; p.z += res.pz; }
+  p.x = clamp(p.x, -258, 258); p.z = clamp(p.z, -258, 258);
+  p.group.position.set(p.x, p.y, p.z);
+  p.group.rotation.y = p.heading;
 }
-
-export function tryEnterCar() {
-  const p = G.player; if (!p || p.inCar) return false;
-  const car = nearestCar(p.pos, 4.5);
-  if (!car) { G.hud && G.hud.toast('No car close enough — walk up to one and press E.'); return false; }
-  p.inCar = true; p.car = car; car.driver = p;
-  sfx.door(); addWanted(1, 'car theft');
-  G.carsStolen++;
-  G.hud && G.hud.toast(`You took the ${car.model.name}. The SPPD noticed.`);
-  return true;
-}
-export function exitCar(wrecked) {
-  const p = G.player; if (!p || !p.inCar) return;
-  const car = p.car;
-  p.inCar = false; p.car = null; if (car) car.driver = null;
-  p.pos.set(car.pos.x + Math.sin(car.yaw + Math.PI / 2) * 2.5, 0, car.pos.z + Math.cos(car.yaw + Math.PI / 2) * 2.5);
-  p.group.position.copy(p.pos); p.group.visible = true;
-  sfx.door();
-  if (wrecked) G.hud && G.hud.toast('The car is wrecked — you bail out.');
-}
-export function damagePlayer(amount, cause) {
-  const p = G.player; if (!p || G.mode !== 'play') return;
-  p.health -= amount;
-  G.hud && G.hud.flashDamage();
-  if (p.health <= 0) { p.health = 0; G.hud && G.hud.showEnd(cause === 'police' ? 'busted' : 'wasted'); }
-}
-export function healPlayer(amount) { const p = G.player; p.health = Math.min(100, p.health + amount); }

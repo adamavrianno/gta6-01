@@ -1,39 +1,39 @@
-// Save / load through localStorage. No account, no network: the save lives
-// in this browser only.
-import { G } from './state.js';
-const KEY = 'solmarina-save-v1';
+// Save / load via localStorage: money, mission progress and best stats.
+import { SAVE_KEY } from './state.js';
 
-export function saveGame(silent) {
+export function saveGame(state) {
   try {
-    const p = G.player;
     const data = {
-      money: G.money, respect: G.respect, missionsDone: G.missionsDone,
-      missionIndex: G.missionIndex, kills: G.kills, carsStolen: G.carsStolen,
-      health: p ? p.health : 100,
-      pos: p ? { x: p.pos.x, z: p.pos.z } : G.spawnPoint,
-      wanted: 0, savedAt: new Date().toISOString(),
+      money: state.money,
+      missionIndex: state.missionIndex,
+      health: state.health,
+      stats: state.stats,
+      savedAt: Date.now(),
     };
-    localStorage.setItem(KEY, JSON.stringify(data));
-    if (!silent && G.hud) G.hud.toast('Game saved — progress kept in this browser.');
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     return true;
   } catch (e) { return false; }
 }
-export function loadSave() {
-  try { const raw = localStorage.getItem(KEY); return raw ? JSON.parse(raw) : null; }
-  catch (e) { return null; }
+
+export function loadGame() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (typeof data.money !== 'number' || typeof data.missionIndex !== 'number') return null;
+    return data;
+  } catch (e) { return null; }
 }
-export function hasSave() { return !!loadSave(); }
-export function applySave(d) {
-  if (!d) return;
-  G.money = d.money || 0; G.respect = d.respect || 0;
-  G.missionsDone = d.missionsDone || 0; G.missionIndex = d.missionIndex || 0;
-  G.kills = d.kills || 0; G.carsStolen = d.carsStolen || 0;
-  if (d.pos) G.spawnPoint = { x: d.pos.x, z: d.pos.z };
-  if (G.player) G.player.health = d.health || 100;
+
+export function hasSave() { return loadGame() !== null; }
+
+export function applySave(state, data) {
+  state.money = data.money;
+  state.missionIndex = Math.min(6, data.missionIndex || 0);
+  if (data.health) state.health = data.health;
+  if (data.stats) state.stats = { ...state.stats, ...data.stats };
 }
-export function saveSummary() {
-  const d = loadSave();
-  if (!d) return '';
-  return `Saved game: ${d.missionsDone} mission${d.missionsDone === 1 ? '' : 's'} done, ` +
-    `$${Math.round(d.money).toLocaleString('en-US')}, respect ${d.respect}.`;
+
+export function clearSave() {
+  try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
 }
